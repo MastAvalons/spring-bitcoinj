@@ -1,4 +1,4 @@
-package mileschet.bitcoin.springbitcoinj;
+package mileschet.bitcoin.services;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -80,32 +80,33 @@ public class BitcoinjService {
 		
 		start();
 
-		walletAppKit.wallet().addCoinsReceivedEventListener(new WalletCoinsReceivedEventListener() {
-			@Override
-			public void onCoinsReceived(Wallet w, Transaction tx, Coin prevBalance, Coin newBalance) {
-				Coin value = tx.getValueSentToMe(w);
-				System.out.println("Received tx for " + value.toFriendlyString() + ": " + tx);
-				System.out.println("Transaction will be forwarded after it confirms.");
-				Futures.addCallback(tx.getConfidence().getDepthFuture(1), new FutureCallback<TransactionConfidence>() {
-					@Override
-					public void onSuccess(TransactionConfidence result) {
-						try {
-							makeOP_RETURNTransaction("keep fun in computing");
-						} catch (Exception e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-					}
 
-					@Override
-					public void onFailure(Throwable t) {
-						// This kind of future can't fail, just rethrow in case
-						// something weird happens.
-						throw new RuntimeException(t);
-					}
-				});
-			}
-		});
+//		walletAppKit.wallet().addCoinsReceivedEventListener(new WalletCoinsReceivedEventListener() {
+//			@Override
+//			public void onCoinsReceived(Wallet w, Transaction tx, Coin prevBalance, Coin newBalance) {
+//				Coin value = tx.getValueSentToMe(w);
+//				System.out.println("Received tx for " + value.toFriendlyString() + ": " + tx);
+//				System.out.println("Transaction will be forwarded after it confirms.");
+//				Futures.addCallback(tx.getConfidence().getDepthFuture(1), new FutureCallback<TransactionConfidence>() {
+//					@Override
+//					public void onSuccess(TransactionConfidence result) {
+//						try {
+//							makeOP_RETURNTransaction("keep fun in computing");
+//						} catch (Exception e) {
+//							// TODO Auto-generated catch block
+//							e.printStackTrace();
+//						}
+//					}
+//
+//					@Override
+//					public void onFailure(Throwable t) {
+//						// This kind of future can't fail, just rethrow in case
+//						// something weird happens.
+//						throw new RuntimeException(t);
+//					}
+//				});
+//			}
+//		});
 
 	}
 

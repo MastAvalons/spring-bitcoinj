@@ -1,4 +1,4 @@
-package mileschet.bitcoin.springbitcoinj;
+package mileschet.bitcoin;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
