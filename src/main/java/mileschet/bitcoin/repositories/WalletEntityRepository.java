@@ -6,6 +6,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface WalletEntityRepository extends PagingAndSortingRepository<WalletEntity, Long> {
+public interface WalletEntityRepository extends PagingAndSortingRepository<WalletEntity, String> {
     public WalletEntity findOneById(Long id);
 }

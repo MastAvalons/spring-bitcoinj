@@ -18,8 +18,11 @@ public class WalletController {
 
     @RequestMapping(value = "/{description}", method = RequestMethod.POST)
     @ResponseBody
-    public String create(@PathVariable("description") String description, @RequestBody String body) throws Exception {
-        String entropy = body.substring(256);
+    public String create(@PathVariable("description") String description, @RequestBody(required = false) String body) throws Exception {
+
+        String entropy = "";
+        if (body != null)
+            entropy = body;
 
         // TODO send priv to email or sms
         WalletEntity wallet = walletService.createWallet(entropy);
@@ -47,7 +50,6 @@ public class WalletController {
 
         return result;
     }
-
 
 
 }

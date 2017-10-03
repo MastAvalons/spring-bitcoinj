@@ -6,6 +6,13 @@ public class RPCParams {
     private String rpcport;
     private String rpchost;
 
+    public RPCParams(String rpcuser, String rpcpassword, String rpcport, String rpchost) {
+        this.rpcuser = rpcuser;
+        this.rpcpassword = rpcpassword;
+        this.rpcport = rpcport;
+        this.rpchost = rpchost;
+    }
+
     public String getRpcuser() {
         return rpcuser;
     }

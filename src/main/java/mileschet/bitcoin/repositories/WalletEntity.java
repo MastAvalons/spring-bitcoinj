@@ -1,14 +1,20 @@
 package mileschet.bitcoin.repositories;
 
 
+import org.hibernate.annotations.GenericGenerator;
+
+import javax.annotation.Generated;
 import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
 
 @Entity
 public class WalletEntity {
 
     @Id
-    private Long id;
+    @GeneratedValue(generator = "uuid")
+    @GenericGenerator(name = "uuid", strategy = "uuid2")
+    private String id;
     private String priv58;
     private String pub58;
     private byte[] priv;
@@ -19,11 +25,11 @@ public class WalletEntity {
     private int bits;
     private String description;
 
-    public Long getId() {
+    public String getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(String id) {
         this.id = id;
     }
 

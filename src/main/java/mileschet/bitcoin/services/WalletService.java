@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -22,7 +23,7 @@ import java.security.SecureRandom;
 import java.util.Calendar;
 import java.util.List;
 
-@Component
+@Service
 public class WalletService {
     public Logger logger = LoggerFactory.getLogger(WalletService.class);
 
@@ -31,6 +32,9 @@ public class WalletService {
 
     @Autowired
     private WalletEntityRepository walletRepository;
+
+    public WalletService() {
+    }
 
     public WalletService(String network, RPCParams rpcParams) {
         this.network = network;
