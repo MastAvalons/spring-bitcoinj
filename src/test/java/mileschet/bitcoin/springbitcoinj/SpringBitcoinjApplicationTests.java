@@ -1,16 +1,20 @@
 package mileschet.bitcoin.springbitcoinj;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 
-@RunWith(SpringRunner.class)
-@SpringBootTest
+@SpringBootApplication
+@EnableWebSecurity
+@EnableJpaRepositories
+@ComponentScan
 public class SpringBitcoinjApplicationTests {
 
-	@Test
-	public void contextLoads() {
-	}
 
+    public static void main(String[] args) {
+        SpringApplication.run(SpringBitcoinjApplicationTests.class, args);
+    }
 }
+
