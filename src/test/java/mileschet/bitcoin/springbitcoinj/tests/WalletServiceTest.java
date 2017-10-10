@@ -1,28 +1,38 @@
 package mileschet.bitcoin.springbitcoinj.tests;
 
+import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.Calendar;
 
-import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.crypto.DeterministicKey;
-import org.bitcoinj.crypto.HDKeyDerivation;
+import org.bitcoinj.crypto.MnemonicException.MnemonicLengthException;
+import org.bitcoinj.params.AbstractBitcoinNetParams;
+import org.bitcoinj.params.MainNetParams;
 import org.bitcoinj.params.RegTestParams;
+import org.bitcoinj.params.TestNet3Params;
 import org.bitcoinj.wallet.DeterministicSeed;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.web.client.RestTemplate;
 
+import info.blockchain.wallet.bip44.HDWallet;
+import info.blockchain.wallet.bip44.HDWalletFactory;
+import info.blockchain.wallet.bip44.HDWalletFactory.Language;
 import mileschet.bitcoin.springbitcoinj.SpringBitcoinjApplicationTests;
 
+/***
+ * 
+ * @author programmer
+ *
+ */
 @RunWith(SpringRunner.class)
 @SpringBootTest(classes = SpringBitcoinjApplicationTests.class, webEnvironment = WebEnvironment.DEFINED_PORT)
 public class WalletServiceTest {
 
-	private static final int HDW_CHAIN_EXTERNAL = 0;
-	private static final int HDW_CHAIN_INTERNAL = 1;
-	private NetworkParameters params = RegTestParams.get();
+	private RestTemplate template = new RestTemplate();
 
 	public byte[] createSeed() {
 
@@ -36,45 +46,59 @@ public class WalletServiceTest {
 	}
 
 	@Test
-	public void testDeriveAddr() {
+	public void testDeriveAddr() throws MnemonicLengthException, IOException {
 
-		byte[] createSeed = createSeed();
-		DeterministicKey ekprv = HDKeyDerivation.createMasterPrivateKey(createSeed);
-		
-		System.out.println(ekprv.serializePrivB58(params));
-		
-		DeterministicKey ekpub = HDKeyDerivation.createMasterPubKeyFromBytes(ekprv.getPubKey(), ekprv.getChainCode());
+		String passphrase = "passphrasetest";
+		int mnemonicLength = 12;
+		String network = "regtest";
 
-		// Create two accounts
-		DeterministicKey ekpub_0 = HDKeyDerivation.deriveChildKey(ekpub, 0);
-		DeterministicKey ekpub_1 = HDKeyDerivation.deriveChildKey(ekpub, 1);
+		AbstractBitcoinNetParams networkParameters = MainNetParams.get();
+		if (network.equals("testnet")) {
+			networkParameters = TestNet3Params.get();
+		} else if (network.equals("regtest")) {
+			networkParameters = RegTestParams.get();
+		}
 
-		System.out.println(ekpub_0.serializePubB58(params));
+		// create wallet
+		HDWallet wallet = HDWalletFactory.createWallet(networkParameters, Language.US, mnemonicLength, passphrase, 1);
 
-		// Create internal and external chain on Account 0
-		DeterministicKey ekpub_0_EX = HDKeyDerivation.deriveChildKey(ekpub_0, HDW_CHAIN_EXTERNAL);
-		DeterministicKey ekpub_0_IN = HDKeyDerivation.deriveChildKey(ekpub_0, HDW_CHAIN_INTERNAL);
+		DeterministicKey key = wallet.getMasterKey();
+		System.out.println(wallet.getSeedHex());
 
-		// Create three addresses on external chain
-		DeterministicKey ekpub_0_EX_0 = HDKeyDerivation.deriveChildKey(ekpub_0_EX, 0);
-		DeterministicKey ekpub_0_EX_1 = HDKeyDerivation.deriveChildKey(ekpub_0_EX, 1);
-		DeterministicKey ekpub_0_EX_2 = HDKeyDerivation.deriveChildKey(ekpub_0_EX, 2);
+		for (int i = 0; i < wallet.getMnemonic().size(); i++) {
+			System.out.println("Word " + (i+1) + " : " + wallet.getMnemonic().get(i));
+		}
 
-		System.out.println(ekpub_0_EX_0.serializePubB58(params));
-		System.out.println(ekpub_0_EX_1.serializePubB58(params));
-		System.out.println(ekpub_0_EX_2.serializePubB58(params));
-		System.out.println(ekpub_0_EX_2.toAddress(params));
-		// Create three addresses on internal chain
-		DeterministicKey ekpub_0_IN_0 = HDKeyDerivation.deriveChildKey(ekpub_0_IN, 0);
-		DeterministicKey ekpub_0_IN_1 = HDKeyDerivation.deriveChildKey(ekpub_0_IN, 1);
-		DeterministicKey ekpub_0_IN_2 = HDKeyDerivation.deriveChildKey(ekpub_0_IN, 2);
+		System.out.println(key.serializePrivB58(networkParameters));
+		System.out.println(key.serializePubB58(networkParameters));
+		System.out.println(key.getPathAsString());
 
-		// Now add a few more addresses with very large indices
-		DeterministicKey ekpub_1_IN = HDKeyDerivation.deriveChildKey(ekpub_1, HDW_CHAIN_INTERNAL);
-		DeterministicKey ekpub_1_IN_4095 = HDKeyDerivation.deriveChildKey(ekpub_1_IN, 4095);
-		System.out.println(ekpub_1_IN_4095.serializePubB58(params));
-		// ExtendedHierarchicKey ekpub_1_IN_4bil =
-		// HDKeyDerivation.deriveChildKey(ekpub_1_IN, 4294967295L);
+		int numAddr = Integer.valueOf(1);
+		int numAcct = Integer.valueOf(1);
+
+		for (int i = 0; i < numAcct; i++) {
+
+			for (int j = 0; j < numAddr; j++) {
+
+				// external chain
+				String addressString = wallet.getAccount(i).getChain(0).getAddressAt(j).getAddressString();
+				String path = wallet.getAccount(i).getChain(0).getAddressAt(j).getPath();
+				String privateKeyString = wallet.getAccount(i).getChain(0).getAddressAt(j).getPrivateKeyString();
+
+				// change chain
+				String addressString2 = wallet.getAccount(i).getChain(1).getAddressAt(j).getAddressString();
+				String path2 = wallet.getAccount(i).getChain(1).getAddressAt(j).getPath();
+				String privateKeyString2 = wallet.getAccount(i).getChain(1).getAddressAt(j).getPrivateKeyString();
+
+				System.out.println("external addressString : " + addressString);
+				System.out.println("external path : " + path);
+				System.out.println("external privateKeyString : " + privateKeyString);
+
+				System.out.println("internal addressString : " + addressString2);
+				System.out.println("internal path : " + path2);
+				System.out.println("internal privateKeyString : " + privateKeyString2);
+
+			}
+		}
 	}
-
 }
