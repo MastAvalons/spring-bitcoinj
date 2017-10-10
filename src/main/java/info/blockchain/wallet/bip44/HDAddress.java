@@ -116,5 +116,4 @@ public class HDAddress {
     public int getChildNum() {
         return childNum;
     }
-
 }

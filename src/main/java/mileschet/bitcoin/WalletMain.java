@@ -2,11 +2,6 @@ package mileschet.bitcoin;
 
 import java.util.Arrays;
 
-import org.bitcoinj.crypto.DeterministicKey;
-import org.bitcoinj.params.AbstractBitcoinNetParams;
-import org.bitcoinj.params.MainNetParams;
-import org.bitcoinj.params.RegTestParams;
-import org.bitcoinj.params.TestNet3Params;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -16,10 +11,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
-
-import info.blockchain.wallet.bip44.HDWallet;
-import info.blockchain.wallet.bip44.HDWalletFactory;
-import info.blockchain.wallet.bip44.HDWalletFactory.Language;
 
 @SpringBootApplication
 @EnableJpaRepositories
