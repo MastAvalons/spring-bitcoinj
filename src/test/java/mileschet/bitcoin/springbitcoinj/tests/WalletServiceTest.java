@@ -1,6 +1,7 @@
 package mileschet.bitcoin.springbitcoinj.tests;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.security.SecureRandom;
 import java.util.Calendar;
@@ -11,6 +12,8 @@ import org.bitcoin.protocols.payments.Protos.OutputOrBuilder;
 import org.bitcoinj.core.Address;
 import org.bitcoinj.core.AddressFormatException;
 import org.bitcoinj.core.Coin;
+import org.bitcoinj.core.ECKey;
+import org.bitcoinj.core.ProtocolException;
 import org.bitcoinj.core.Transaction;
 import org.bitcoinj.core.TransactionOutPoint;
 import org.bitcoinj.core.TransactionOutput;
@@ -22,21 +25,28 @@ import org.bitcoinj.params.AbstractBitcoinNetParams;
 import org.bitcoinj.params.MainNetParams;
 import org.bitcoinj.params.RegTestParams;
 import org.bitcoinj.params.TestNet3Params;
+import org.bitcoinj.script.Script;
 import org.bitcoinj.wallet.DeterministicSeed;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.skyscreamer.jsonassert.JSONCompareMode;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.servlet.handler.MappedInterceptor;
 
+import com.subgraph.orchid.encoders.Hex;
+
+import antlr.RecognitionException;
 import info.blockchain.wallet.bip44.HDChain;
 import info.blockchain.wallet.bip44.HDWallet;
 import info.blockchain.wallet.bip44.HDWalletFactory;
@@ -142,8 +152,15 @@ public class WalletServiceTest {
 
 		String message = "{\"id\":\"t0\", \"method\": \"" + method + "\", \"params\": [ " + params + "] }";
 		HttpEntity<String> request = new HttpEntity<String>(message, createHeaders(rpcuser, rpcpassword));
-		ResponseEntity<String> exchange = template.exchange(uri, HttpMethod.POST, request, String.class);
-		return exchange;
+		ResponseEntity<String> exchange;
+		try {
+			exchange = template.exchange(uri, HttpMethod.POST, request, String.class);
+			return exchange;
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			throw ex;
+		}
+
 	}
 
 	@Test
@@ -187,7 +204,6 @@ public class WalletServiceTest {
 			MnemonicWordException, MnemonicChecksumException, DecoderException, JSONException {
 
 		String passphrase = "passphrasetest";
-		int mnemonicLength = 12;
 		String network = "regtest";
 
 		AbstractBitcoinNetParams networkParameters = MainNetParams.get();
@@ -205,31 +221,73 @@ public class WalletServiceTest {
 		ResponseEntity<String> exchange = btcJsonRPCRequest("getblockchaininfo");
 		System.out.println(exchange.getBody());
 
-		exchange = btcJsonRPCRequest("generate", "1");
+		exchange = btcJsonRPCRequest("generate", "100");
 		System.out.println(exchange.getBody());
 
 		String addr = "\"" + wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString() + "\"";
-		String payload = "1, 9999999, [ " + addr + "]";
+		exchange = btcJsonRPCRequest("importaddress", addr);
+		System.out.println(exchange.getBody());
+
+		exchange = btcJsonRPCRequest("generate", "100");
+		System.out.println(exchange.getBody());
+
+		String payload = addr + ", \"1\"";
+		exchange = btcJsonRPCRequest("sendtoaddress", payload);
+		System.out.println(exchange.getBody());
+
+		exchange = btcJsonRPCRequest("generate", "10");
+		System.out.println(exchange.getBody());
+
+		payload = "1, 9999999, [ " + addr + "]";
 		exchange = btcJsonRPCRequest("listunspent", payload);
 		System.out.println(exchange.getBody());
 
-		String addressStr = wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString(););
-		
+		String addressStr = wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString();
+
 		JSONObject json = new JSONObject(exchange.getBody());
 		JSONArray utxo = json.getJSONArray("result");
 		for (int i = 0; i < utxo.length(); i++) {
 
-			if (utxo.getJSONObject(i).optString("address")
-					.equals(addressStr)) {
-				
-				System.out.println(utxo);
-				
-				Coin value = Coin.parseCoin("0.10");
-				Address address = Address.fromBase58(networkParameters, addressStr);
-				
+			// only transaction from an address
+			if (utxo.getJSONObject(i).optString("address").equals(addressStr)) {
+
+				System.out.println(utxo.getJSONObject(i).toString());
+
+				String txid = "\"" + utxo.getJSONObject(i).getString("txid") + "\"";
+				exchange = btcJsonRPCRequest("getrawtransaction", txid);
+				JSONObject resultTx = new JSONObject(exchange.getBody());
+
+				String rawTx = resultTx.getString("result");
+
+				wallet.addAccount();
+				String addressTo = wallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString();
+				Coin value = Coin.parseCoin("0.90");
+				Address address = Address.fromBase58(networkParameters, addressTo);
+
 				Transaction tx = new Transaction(networkParameters);
 				tx.addOutput(value, address);
-//				TransactionOutPoint t = new TransactionOutPoint(networkParameters, )
+
+				long index = 0;
+				Transaction fromTx = new Transaction(networkParameters, Hex.decode(rawTx));
+				TransactionOutPoint t = new TransactionOutPoint(networkParameters, index, fromTx);
+
+				
+				ECKey key = wallet.getMasterKey().decompress();
+				tx.addSignedInput(t, new Script(Hex.decode(utxo.getJSONObject(i).getString("scriptPubKey").getBytes())),
+						key, Transaction.SigHash.ALL, true);
+				
+				exchange = btcJsonRPCRequest("generate", "1");
+				System.out.println(exchange.getBody());
+				
+				
+				byte[] txHex = Hex.encode(tx.unsafeBitcoinSerialize());
+				System.out.println(new String(txHex));
+				
+				exchange = btcJsonRPCRequest("sendrawtransaction", "\"" + new String(txHex) + "\"");
+				System.out.println(exchange.getBody());
+				
+				exchange = btcJsonRPCRequest("generate", "1");
+				System.out.println(exchange.getBody());
 				
 				break;
 			}
@@ -237,4 +295,13 @@ public class WalletServiceTest {
 		}
 
 	}
+
+	public static void main(String[] args) throws ProtocolException, UnsupportedEncodingException {
+
+		String payload = "0200000001decaf2634b57f7b303bc63ba8d53f5505c8261b86a683d2d65c142ec06f3418e0000000049483045022100f931ce3668255c95bff064b0ee10ef2f354dc3e13c9a634b19495eaac2184bca022007c7b2360e6b2fc3a56646ae399440c992844fc3001a942582fcab5f67d118e001feffffff0200021024010000001976a91498ca99335c459c7682e81360b276e3a9137f3d2588ac00e1f505000000001976a914a2097279b632d170ecedcbff9dc327c53fbba9c588acc8000000";
+		Transaction tx = new Transaction(RegTestParams.get(), Hex.decode(payload.getBytes()));
+		System.out.println(tx.getHashAsString());
+
+	}
+
 }
