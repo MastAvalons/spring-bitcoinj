@@ -227,7 +227,7 @@ public class WalletServiceTest {
 		// create a transaction using json-rpc
 
 		ResponseEntity<String> exchange = btcJsonRPCRequest("getblockchaininfo");
-		exchange = btcJsonRPCRequest("generate", "1");
+		exchange = btcJsonRPCRequest("generate", "200");
 
 		String addr = "\"" + wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString() + "\"";
 		exchange = btcJsonRPCRequest("importaddress", addr);
@@ -259,11 +259,11 @@ public class WalletServiceTest {
 				exchange = btcJsonRPCRequest("generate", "5");
 
 				Transaction tx = new Transaction(networkParameters);
-				BigDecimal amount = new BigDecimal(utxo.getJSONObject(i).getString("amount"), MathContext.DECIMAL64);
+				BigDecimal amount = new BigDecimal(utxo.getJSONObject(i).getString("amount"), MathContext.DECIMAL32);
 
 				exchange = btcJsonRPCRequest("estimatefee", "6");
 				JSONObject estimatedFee = new JSONObject(exchange.getBody());
-				BigDecimal fee = new BigDecimal(estimatedFee.getString("result"), MathContext.DECIMAL64);
+				BigDecimal fee = new BigDecimal(estimatedFee.getString("result"), MathContext.DECIMAL32);
 				if (fee.compareTo(BigDecimal.ZERO) == -1) {
 					fee = new BigDecimal(0.002, MathContext.DECIMAL64);
 				}
@@ -271,8 +271,7 @@ public class WalletServiceTest {
 				wallet.addAccount();
 				String addressTo = wallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString();
 
-				
-				Coin value = Coin.valueOf(amount.subtract(fee, MathContext.DECIMAL64).longValue());
+				Coin value = Coin.parseCoin(amount.subtract(fee, MathContext.DECIMAL32).toPlainString());
 				Address address = Address.fromBase58(networkParameters, addressTo);
 
 				tx.addOutput(value, address);
@@ -291,7 +290,7 @@ public class WalletServiceTest {
 
 				System.out.println("TxHex: " + new String(txHex));
 
-				exchange = btcJsonRPCRequest("sendrawtransaction", "\"" + new String(txHex) + "\"");
+				exchange = btcJsonRPCRequest("sendrawtransaction", "\"" + new String(txHex) + "\", true");
 
 				exchange = btcJsonRPCRequest("generate", "1");
 
@@ -304,8 +303,9 @@ public class WalletServiceTest {
 
 	public static void main(String[] args) throws ProtocolException, UnsupportedEncodingException {
 
-		String payload = "0200000001decaf2634b57f7b303bc63ba8d53f5505c8261b86a683d2d65c142ec06f3418e0000000049483045022100f931ce3668255c95bff064b0ee10ef2f354dc3e13c9a634b19495eaac2184bca022007c7b2360e6b2fc3a56646ae399440c992844fc3001a942582fcab5f67d118e001feffffff0200021024010000001976a91498ca99335c459c7682e81360b276e3a9137f3d2588ac00e1f505000000001976a914a2097279b632d170ecedcbff9dc327c53fbba9c588acc8000000";
+		String payload = "0100000001371cf7f2df8f06894c0dde5f233a697498e38774e2db36eeb6c898d361139b8c000000006a47304402202f308c8f27738c9c8e60ba43a5d1a477da11870faebacc44a05de50aa8e7691e022074105e1805a9fd1a86b7459e672574f33d9d0662813b7db87c7ede454d6de067812102ea55b3d24eb588f3104b0de2ab0d3bc2aa157e96b91b5fc65582b00bda787241ffffffff0100000000000000001976a914fd17d116b77450a020c67496abf73caaf2fe1bef88ac00000000";
 		Transaction tx = new Transaction(RegTestParams.get(), Hex.decode(payload.getBytes()));
+		System.out.println(tx.toString());
 		System.out.println(tx.getHashAsString());
 
 	}
