@@ -2,6 +2,8 @@ package mileschet.bitcoin.springbitcoinj.tests;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.math.BigDecimal;
+import java.math.MathContext;
 import java.nio.charset.Charset;
 import java.security.SecureRandom;
 import java.util.Calendar;
@@ -11,10 +13,12 @@ import org.apache.tomcat.util.codec.binary.Base64;
 import org.bitcoin.protocols.payments.Protos.OutputOrBuilder;
 import org.bitcoinj.core.Address;
 import org.bitcoinj.core.AddressFormatException;
+import org.bitcoinj.core.Base58;
 import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.ProtocolException;
 import org.bitcoinj.core.Transaction;
+import org.bitcoinj.core.Transaction.Purpose;
 import org.bitcoinj.core.TransactionOutPoint;
 import org.bitcoinj.core.TransactionOutput;
 import org.bitcoinj.crypto.DeterministicKey;
@@ -41,9 +45,12 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.handler.MappedInterceptor;
 
+import com.squareup.okhttp.Response;
 import com.subgraph.orchid.encoders.Hex;
 
 import antlr.RecognitionException;
@@ -152,11 +159,12 @@ public class WalletServiceTest {
 
 		String message = "{\"id\":\"t0\", \"method\": \"" + method + "\", \"params\": [ " + params + "] }";
 		HttpEntity<String> request = new HttpEntity<String>(message, createHeaders(rpcuser, rpcpassword));
-		ResponseEntity<String> exchange;
+		ResponseEntity<String> exchange = null;
 		try {
 			exchange = template.exchange(uri, HttpMethod.POST, request, String.class);
 			return exchange;
-		} catch (Exception ex) {
+		} catch (HttpServerErrorException ex) {
+			System.out.println("RPC Request Error Response: " + ex.getResponseBodyAsString());
 			ex.printStackTrace();
 			throw ex;
 		}
@@ -219,28 +227,20 @@ public class WalletServiceTest {
 		// create a transaction using json-rpc
 
 		ResponseEntity<String> exchange = btcJsonRPCRequest("getblockchaininfo");
-		System.out.println(exchange.getBody());
-
-		exchange = btcJsonRPCRequest("generate", "100");
-		System.out.println(exchange.getBody());
+		exchange = btcJsonRPCRequest("generate", "1");
 
 		String addr = "\"" + wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString() + "\"";
 		exchange = btcJsonRPCRequest("importaddress", addr);
-		System.out.println(exchange.getBody());
 
-		exchange = btcJsonRPCRequest("generate", "100");
-		System.out.println(exchange.getBody());
+		exchange = btcJsonRPCRequest("generate", "5");
 
 		String payload = addr + ", \"1\"";
 		exchange = btcJsonRPCRequest("sendtoaddress", payload);
-		System.out.println(exchange.getBody());
 
 		exchange = btcJsonRPCRequest("generate", "10");
-		System.out.println(exchange.getBody());
 
 		payload = "1, 9999999, [ " + addr + "]";
 		exchange = btcJsonRPCRequest("listunspent", payload);
-		System.out.println(exchange.getBody());
 
 		String addressStr = wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString();
 
@@ -251,44 +251,50 @@ public class WalletServiceTest {
 			// only transaction from an address
 			if (utxo.getJSONObject(i).optString("address").equals(addressStr)) {
 
-				System.out.println(utxo.getJSONObject(i).toString());
-
 				String txid = "\"" + utxo.getJSONObject(i).getString("txid") + "\"";
 				exchange = btcJsonRPCRequest("getrawtransaction", txid);
 				JSONObject resultTx = new JSONObject(exchange.getBody());
 
-				String rawTx = resultTx.getString("result");
+				exchange = btcJsonRPCRequest("importaddress", addr);
+				exchange = btcJsonRPCRequest("generate", "5");
+
+				Transaction tx = new Transaction(networkParameters);
+				BigDecimal amount = new BigDecimal(utxo.getJSONObject(i).getString("amount"), MathContext.DECIMAL64);
+
+				exchange = btcJsonRPCRequest("estimatefee", "6");
+				JSONObject estimatedFee = new JSONObject(exchange.getBody());
+				BigDecimal fee = new BigDecimal(estimatedFee.getString("result"), MathContext.DECIMAL64);
+				if (fee.compareTo(BigDecimal.ZERO) == -1) {
+					fee = new BigDecimal(0.002, MathContext.DECIMAL64);
+				}
 
 				wallet.addAccount();
 				String addressTo = wallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString();
-				Coin value = Coin.parseCoin("0.90");
+
+				
+				Coin value = Coin.valueOf(amount.subtract(fee, MathContext.DECIMAL64).longValue());
 				Address address = Address.fromBase58(networkParameters, addressTo);
 
-				Transaction tx = new Transaction(networkParameters);
 				tx.addOutput(value, address);
 
-				long index = 0;
+				String rawTx = resultTx.getString("result");
 				Transaction fromTx = new Transaction(networkParameters, Hex.decode(rawTx));
-				TransactionOutPoint t = new TransactionOutPoint(networkParameters, index, fromTx);
+				TransactionOutPoint t = new TransactionOutPoint(networkParameters, 0, fromTx);
 
-				
-				ECKey key = wallet.getMasterKey().decompress();
 				tx.addSignedInput(t, new Script(Hex.decode(utxo.getJSONObject(i).getString("scriptPubKey").getBytes())),
-						key, Transaction.SigHash.ALL, true);
-				
-				exchange = btcJsonRPCRequest("generate", "1");
-				System.out.println(exchange.getBody());
-				
-				
+						wallet.getAccount(0).getChain(0).getAddressAt(0).getECKey(), Transaction.SigHash.ALL, true);
+
+				tx.setPurpose(Purpose.USER_PAYMENT);
 				byte[] txHex = Hex.encode(tx.unsafeBitcoinSerialize());
-				System.out.println(new String(txHex));
-				
-				exchange = btcJsonRPCRequest("sendrawtransaction", "\"" + new String(txHex) + "\"");
-				System.out.println(exchange.getBody());
-				
+
 				exchange = btcJsonRPCRequest("generate", "1");
-				System.out.println(exchange.getBody());
-				
+
+				System.out.println("TxHex: " + new String(txHex));
+
+				exchange = btcJsonRPCRequest("sendrawtransaction", "\"" + new String(txHex) + "\"");
+
+				exchange = btcJsonRPCRequest("generate", "1");
+
 				break;
 			}
 
