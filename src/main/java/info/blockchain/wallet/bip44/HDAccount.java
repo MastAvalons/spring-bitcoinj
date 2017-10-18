@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.bitcoinj.core.AddressFormatException;
 import org.bitcoinj.core.Base58;
+import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.crypto.ChildNumber;
 import org.bitcoinj.crypto.DeterministicKey;
@@ -207,5 +208,9 @@ public class HDAccount {
     public String getPath() {
         return strPath;
     }
+
+	public ECKey getECKey() {
+		return aKey;
+	}
 
 }
