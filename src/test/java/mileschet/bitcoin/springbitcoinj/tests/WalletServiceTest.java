@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.nio.charset.Charset;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Calendar;
 
 import org.apache.commons.codec.DecoderException;
@@ -49,6 +50,7 @@ import org.springframework.web.client.RestTemplate;
 
 import com.subgraph.orchid.encoders.Hex;
 
+import info.blockchain.wallet.bip44.HDAddress;
 import info.blockchain.wallet.bip44.HDChain;
 import info.blockchain.wallet.bip44.HDWallet;
 import info.blockchain.wallet.bip44.HDWalletFactory;
@@ -137,6 +139,40 @@ public class WalletServiceTest {
 		System.out.println(exchange.getBody());
 
 		// create a transaction bitcoinj
+
+	}
+
+	@Test
+	public void testWatchOnlyWallet() throws MnemonicLengthException, IOException, AddressFormatException,
+			MnemonicWordException, MnemonicChecksumException, DecoderException {
+
+		String passphrase = "passphrasetest";
+		String network = "regtest";
+
+		AbstractBitcoinNetParams networkParameters = MainNetParams.get();
+		if (network.equals("testnet")) {
+			networkParameters = TestNet3Params.get();
+		} else if (network.equals("regtest")) {
+			networkParameters = RegTestParams.get();
+		}
+
+		String words = "promote neither chalk mystery among negative wood afford drip flash tiny enforce";
+		HDWallet rootWallet = HDWalletFactory.restoreWallet(networkParameters, Language.US, words, passphrase, 2);
+
+		logger.info(rootWallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString());
+		logger.info(rootWallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString());
+
+		// get all xpub from all accounts
+		ArrayList<String> xpubList = new ArrayList<>();
+		for (int x = 0; x < rootWallet.getAccounts().size(); x++) {
+			xpubList.add(rootWallet.getAccount(x).getXpub());
+		}
+
+		HDWallet wallet = HDWalletFactory.restoreWatchOnlyWallet(networkParameters, xpubList);
+
+		logger.info(wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString());
+		logger.info(wallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString());
+		logger.info(wallet.getAccount(0).getChain(0).getAddressAt(0).getPath());
 
 	}
 
@@ -242,76 +278,152 @@ public class WalletServiceTest {
 
 		JSONObject json = new JSONObject(exchange.getBody());
 		JSONArray utxo = json.getJSONArray("result");
-		for (int i = 0; i < utxo.length(); i++) {
+		int i = 0;
 
-			// only transaction from an address
-			if (utxo.getJSONObject(i).optString("address").equals(addressStr)) {
+		// only transaction from an address
+		if (utxo.getJSONObject(i).optString("address").equals(addressStr)) {
 
-				String txid = "\"" + utxo.getJSONObject(i).getString("txid") + "\"";
-				exchange = btcJsonRPCRequest("getrawtransaction", txid);
-				JSONObject resultTx = new JSONObject(exchange.getBody());
+			String txid = "\"" + utxo.getJSONObject(i).getString("txid") + "\"";
+			exchange = btcJsonRPCRequest("getrawtransaction", txid);
+			JSONObject resultTx = new JSONObject(exchange.getBody());
 
-				exchange = btcJsonRPCRequest("importaddress", addr);
-				exchange = btcJsonRPCRequest("generate", "5");
-				exchange = btcJsonRPCRequest("estimatefee", "6");
-				JSONObject estimatedFee = new JSONObject(exchange.getBody());
-				BigDecimal fee = new BigDecimal(estimatedFee.getString("result"), MathContext.DECIMAL32);
-				if (fee.compareTo(BigDecimal.ZERO) == -1) {
-					fee = new BigDecimal(0.000038, MathContext.DECIMAL32);
-				}
-
-				wallet.addAccount();
-				String addressTo = wallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString();
-
-				Transaction tx = new Transaction(networkParameters);
-				tx.setPurpose(Purpose.USER_PAYMENT);
-
-				BigDecimal amount = new BigDecimal(utxo.getJSONObject(i).getString("amount"), MathContext.DECIMAL32);
-				BigDecimal half = amount.divide(BigDecimal.valueOf(2L), MathContext.DECIMAL32);
-				Coin value = Coin.parseCoin(half.subtract(fee, MathContext.DECIMAL32).toPlainString());
-
-				String rawTx = resultTx.getString("result");
-				Transaction fromTx = new Transaction(networkParameters, Hex.decode(rawTx));
-				TransactionOutPoint t = new TransactionOutPoint(networkParameters, 1, fromTx.getHash());
-
-				ECKey cKey = wallet.getAccount(0).getChain(0).getAddressAt(0).getECKey();
-
-				logger.info(utxo.getJSONObject(i).getString("scriptPubKey"));
-				// byte[] uxtoScript =
-				// Hex.decode(utxo.getJSONObject(i).getString("scriptPubKey"));
-				Script script = new Script(Hex.decode(utxo.getJSONObject(i).getString("scriptPubKey").getBytes()));
-
-				Address address = Address.fromBase58(networkParameters, addressTo);
-				Address changeAddr = wallet.getAccount(0).getChain(1).getAddressAt(0).getAddress();
-
-				exchange = btcJsonRPCRequest("importaddress", "\"" + address.toBase58() + "\"");
-				exchange = btcJsonRPCRequest("importaddress", "\"" + changeAddr.toBase58() + "\"");
-
-				tx.addOutput(value, address);
-				tx.addOutput(Coin.parseCoin(half.toPlainString()), changeAddr);
-				tx.addSignedInput(t, script, cKey);
-
-				byte[] txHex = Hex.encode(tx.unsafeBitcoinSerialize());
-				String strTx = new String(txHex);
-				System.out.println("TxHex: " + strTx);
-
-				exchange = btcJsonRPCRequest("generate", "1");
-				exchange = btcJsonRPCRequest("sendrawtransaction", "\"" + strTx + "\", true");
-				exchange = btcJsonRPCRequest("generate", "10");
-
-				break;
+			exchange = btcJsonRPCRequest("importaddress", addr);
+			exchange = btcJsonRPCRequest("generate", "5");
+			exchange = btcJsonRPCRequest("estimatefee", "6");
+			JSONObject estimatedFee = new JSONObject(exchange.getBody());
+			BigDecimal fee = new BigDecimal(estimatedFee.getString("result"), MathContext.DECIMAL32);
+			if (fee.compareTo(BigDecimal.ZERO) == -1) {
+				fee = new BigDecimal(0.000038, MathContext.DECIMAL32);
 			}
+
+			wallet.addAccount();
+			String addressTo = wallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString();
+
+			Transaction tx = new Transaction(networkParameters);
+			tx.setPurpose(Purpose.USER_PAYMENT);
+
+			BigDecimal amount = new BigDecimal(utxo.getJSONObject(i).getString("amount"), MathContext.DECIMAL32);
+			BigDecimal half = amount.divide(BigDecimal.valueOf(2L), MathContext.DECIMAL32);
+			Coin value = Coin.parseCoin(half.subtract(fee, MathContext.DECIMAL32).toPlainString());
+
+			String rawTx = resultTx.getString("result");
+			Transaction fromTx = new Transaction(networkParameters, Hex.decode(rawTx));
+			TransactionOutPoint t = new TransactionOutPoint(networkParameters, 1, fromTx.getHash());
+
+			ECKey cKey = wallet.getAccount(0).getChain(0).getAddressAt(0).getECKey();
+
+			logger.info(utxo.getJSONObject(i).getString("scriptPubKey"));
+			// byte[] uxtoScript =
+			// Hex.decode(utxo.getJSONObject(i).getString("scriptPubKey"));
+			Script script = new Script(Hex.decode(utxo.getJSONObject(i).getString("scriptPubKey").getBytes()));
+
+			Address address = Address.fromBase58(networkParameters, addressTo);
+			Address changeAddr = wallet.getAccount(0).getChain(1).getAddressAt(0).getAddress();
+
+			exchange = btcJsonRPCRequest("importaddress", "\"" + address.toBase58() + "\"");
+			exchange = btcJsonRPCRequest("importaddress", "\"" + changeAddr.toBase58() + "\"");
+
+			tx.addOutput(value, address);
+			tx.addOutput(Coin.parseCoin(half.toPlainString()), changeAddr);
+			tx.addSignedInput(t, script, cKey);
+
+			byte[] txHex = Hex.encode(tx.unsafeBitcoinSerialize());
+			String strTx = new String(txHex);
+			System.out.println("TxHex: " + strTx);
+
+			exchange = btcJsonRPCRequest("generate", "1");
+			exchange = btcJsonRPCRequest("sendrawtransaction", "\"" + strTx + "\", true");
+			exchange = btcJsonRPCRequest("generate", "10");
 
 		}
 
 	}
 
-	public static void main(String[] args) throws ProtocolException, UnsupportedEncodingException {
+	@Test
+	public void testJSONRPCAndCreateMultiSignTransaction() throws Exception {
 
-		String payload = "010000000101973e9e727e21f35be8a791dbd65d96e779df6e2e13d73bd0e593e55db1359d000000006a4730440220738764060d70335003ce9817c1a7e2648011062733e52587fa3ab5e9b81e72f402201a6063b5341cce7d52819364347b4fa2c7c18bc7d613700a2a0954f8eadad2d98121024a1728b77e360c402df95e0ad5faac8aa5d85bb4e620598b30b474f29cf07259ffffffff02a8e1fa02000000001976a914fd17d116b77450a020c67496abf73caaf2fe1bef88ac80f0fa02000000001976a91444f2334f6b116235f082fe4e08e606c7191de70888ac00000000	";
-		Transaction tx = new Transaction(RegTestParams.get(), Hex.decode(payload.getBytes()));
-		System.out.println(tx.toString());
-		System.out.println(tx.getHashAsString());
+		String passphrase = "passphrasetest";
+		String network = "regtest";
+
+		AbstractBitcoinNetParams networkParameters = MainNetParams.get();
+		if (network.equals("testnet")) {
+			networkParameters = TestNet3Params.get();
+		} else if (network.equals("regtest")) {
+			networkParameters = RegTestParams.get();
+		}
+
+		String words = "promote neither chalk mystery among negative wood afford drip flash tiny enforce";
+		HDWallet wallet = HDWalletFactory.restoreWallet(networkParameters, Language.US, words, passphrase, 1);
+
+		// create a transaction using json-rpc
+
+		ResponseEntity<String> exchange = btcJsonRPCRequest("getblockchaininfo");
+		exchange = btcJsonRPCRequest("generate", "200");
+
+		String addr1 = wallet.getAccount(0).getChain(0).getAddressAt(0).getAddressString();
+		wallet.addAccount();
+		String addr2 = wallet.getAccount(1).getChain(0).getAddressAt(0).getAddressString();
+
+		exchange = btcJsonRPCRequest("importaddress", "\"" + addr1 + "\"");
+		exchange = btcJsonRPCRequest("importaddress", "\"" + addr2 + "\"");
+
+		exchange = btcJsonRPCRequest("generate", "6");
+
+		// create multi sig
+		String params = "2, [ \"" + new String(Hex.encode(wallet.getAccount(0).getChain(0).getAddressAt(0).getPubKey()))
+				+ "\", \"" + new String(Hex.encode(wallet.getAccount(1).getChain(0).getAddressAt(0).getPubKey()))
+				+ "\" ]";
+		logger.info(params);
+		exchange = btcJsonRPCRequest("createmultisig", params);
+
+		JSONObject json = new JSONObject(exchange.getBody()).getJSONObject("result");
+		String addrMultiSig = json.getString("address");
+		String redeemScript = json.getString("redeemScript");
+
+		exchange = btcJsonRPCRequest("importaddress", "\"" + addrMultiSig + "\"");
+		exchange = btcJsonRPCRequest("generate", "1");
+
+		String payload = "\"" + addrMultiSig + "\"" + ", \"10\"";
+		exchange = btcJsonRPCRequest("sendtoaddress", payload);
+
+		exchange = btcJsonRPCRequest("generate", "13");
+
+		String txId = new JSONObject(exchange.getBody()).getString("result");
+		exchange = btcJsonRPCRequest("getrawtransaction", txId);
+		JSONObject resultTx = new JSONObject(exchange.getBody());
+		String rawTx = resultTx.getString("result");
+		Transaction fromTx = new Transaction(networkParameters, Hex.decode(rawTx));
+
+	}
+
+	public static void main(String[] args) throws ProtocolException, AddressFormatException, MnemonicLengthException,
+			MnemonicWordException, MnemonicChecksumException, IOException, DecoderException {
+
+		String passphrase = "passphrasetest";
+		String network = "regtest";
+
+		AbstractBitcoinNetParams networkParameters = MainNetParams.get();
+		if (network.equals("testnet")) {
+			networkParameters = TestNet3Params.get();
+		} else if (network.equals("regtest")) {
+			networkParameters = RegTestParams.get();
+		}
+
+		String xpub = "tpubDCNY1MLcLQ5seJqscB1gt9gHXf7WfTmprmW95JQJ3uMR593WEVKBRrmD9wGiT57BqM2yfVGLWhn6iSBeGKnWK2QRzDxkdgjM8okZRneFK5o";
+		ArrayList<String> xpubList = new ArrayList<>();
+		xpubList.add(xpub);
+		HDWallet wallet = HDWalletFactory.restoreWatchOnlyWallet(networkParameters, xpubList);
+
+		for (int x = 0; x < 10; x++) {
+			HDAddress addressAt = wallet.getAccount(0).getChain(0).getAddressAt(x);
+
+			System.out.println("AddressString: " + addressAt.getAddressString());
+			System.out.println("Path: " + addressAt.getPath());
+			System.out.println("PubKey: " + new String(Hex.encode(addressAt.getPubKey())));
+			System.out.println("ChildNum: " + addressAt.getChildNum());
+			System.out.println("PrivateKeyString: " + addressAt.getPrivateKeyString());
+
+		}
 
 	}
 
